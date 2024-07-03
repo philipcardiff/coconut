@@ -5,9 +5,13 @@ uses the environment variables in all the spawned processes, used for executing 
 in the various stages of the simulation.
 """
 
-machine_name = 'ugent_cluster_RHEL8'
+machine_name = 'meluxina'
 
 solver_load_cmd_dict = {
+    'meluxina': {
+        'abaqus.v2023': 'module load intel && module load abaqus/2023',
+        'openfoam.v10': 'module load intel && module load OpenFOAM/10-foss-2023a; source $FOAM_BASH',
+    },
     'ugent_cluster_RHEL8': {
         'fluent.v2023R1': 'ml ANSYS_CFD/2023R1',
         'kratos_structure.v94': 'ml Kratos/9.4.5-Anaconda3-2023.09-Python-3.11',

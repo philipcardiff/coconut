@@ -1,0 +1,95 @@
+#!/bin/bash -l
+
+#SBATCH -J Test_CoCo
+#SBATCH --nodes=1
+#SBATCH --time=00:30:00
+#SBATCH --partition=cpu
+#SBATCH --account=p200439
+#SBATCH --qos=test
+#SBATCH --error=job.err
+#SBATCH --output=job.out
+#SBATCH --ntasks=120
+#SBATCH --ntasks-per-node=120
+#SBATCH --cpus-per-task=1
+#### #SBATCH -L abaqus:23
+
+cd $SLURM_SUBMIT_DIR
+
+### Load ABAQUS module
+#module load intel
+#module load abaqus/2023
+#module load OpenFOAM/10-foss-2023a
+#module list
+#echo "Module avail:"
+#module avail
+echo; echo "Module list"
+module load Python/3.11.3-GCCcore-12.3.0
+module list
+
+
+export PATH=/project/home/p200272/packages/abaqus/2023/linux_a64/code/bin/SMAExternal/impi/bin:$PATH
+#echo $PATH
+
+### Configure environment variables, need to unset SLURM's Global Task ID for ABAQUS's PlatformMPI to work
+unset SLURM_GTIDS
+
+### Create ABAQUS environment file for current job, you can set/add your own options (Python syntax)
+env_file=abaqus_v6.env
+#echo ${env_file}
+cat << EOF > ${env_file}
+verbose = 3
+ask_delete = OFF
+
+# Location of scratch directory
+## multi-node jobs should use the scratch on Lustre
+## scratch="/scratch/global"
+## single-node jobs can use the scratch on the node for better performance (max 400GB)
+scratch="/home/users/u101652/scratch"
+mp_mpi_implementation = IMPI
+mp_mpirun_path = {PMPI: '/project/home/p200272/packages/abaqus/2023/linux_a64/code/bin/SMAExternal/pmpi/bin/mpirun', IMPI: '/project/home/p200272/packages/abaqus/2023/linux_a64/code/bin/SMAExternal/impi/bin/mpirun'}
+mp_mpirun_options=""
+mp_rsh_command="ssh -n -o StrictHostKeyChecking=no -o PasswordAuthentication=no %H %C"
+EOF
+
+#cat ${env_file}
+
+node_list=$(scontrol show hostname ${SLURM_NODELIST} | sort -u)
+#echo $host_list
+mp_host_list="["
+for host in ${node_list}; do
+ ssh-keyscan ${host} >> ${HOME}/.ssh/known_hosts
+ mp_host_list="${mp_host_list}['$host', ${SLURM_NTASKS_PER_NODE}],"
+done
+mp_host_list=$(echo ${mp_host_list} | sed -e "s/,$/]/")
+echo "mp_host_list=${mp_host_list}" >> ${env_file}
+
+### Set input file and job (file prefix) name here
+#job_name=${SLURM_JOB_NAME}
+
+### ABAQUS parallel execution
+#input_file=XL_Stent_w_leaflet_explicit_annulus_3D_Hyperelastic_cab_ThreeFibre_axial.inp
+#abaqus job=${job_name} input=${input_file} double=both cpus=${SLURM_NTASKS} mp_mode=mpi interactive user=./ThreeFibre_vuaniso.f
+
+# Try load OpenFOAM
+module load intel && module load OpenFOAM/10-foss-2023a
+source $FOAM_BASH
+#echo; echo "module list (with OpenFOAM):
+#module list
+
+# Add location of coconut to the python path
+export PYTHONPATH=/project/home/p200396/philip:$PYTHONPATH
+echo "PYTHONPATH is ${PYTHONPATH}"
+
+# Create python environment: only needed once!
+#python3 -m venv my_python-env
+#source my_python-env/bin/activate
+#pip install --upgrade pip
+#pip install --upgrade pip
+#python3 -m pip install "numpy>=1.19.5" "scipy>=1.3.0" "matplotlib==3.1.3"
+
+# Load python environment
+source my_python-env/bin/activate
+
+# Start CoCoNut script
+python3 setup_case.py &> log.python3.setup_case
+python3 run_simulation.py &> log.python3.run_simulation.py
